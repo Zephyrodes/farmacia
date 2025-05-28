@@ -1,0 +1,52 @@
+services:
+  db:
+      image: mysql:8.0
+      container_name: farmacia_db
+      environment:
+        MYSQL_ROOT_PASSWORD: root
+        MYSQL_DATABASE: farmacia_db
+        MYSQL_USER: farm_user
+        MYSQL_PASSWORD: FarmaciaKr2!
+      ports:
+        - "3307:3306"
+      volumes:
+        - db_data:/var/lib/mysql
+  
+  backend:
+    build: ./backend
+    env_file:
+      - .env
+    restart: on-failure
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=production
+      - AWS_REGION=us-east-1
+      - BUCKET_NAME=imagenes-productos-farmacia
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      # variables para Selenium Remote WebDriver
+      - SELENIUM_HOST=selenium
+      - SELENIUM_PORT=4444
+    depends_on:
+      - db 
+      - selenium
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+  
+  selenium:
+    image: selenium/standalone-firefox:latest
+    container_name: selenium
+    ports:
+      - "4444:4444"
+
+volumes:
+  db_data:

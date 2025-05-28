@@ -1,0 +1,16 @@
+fastapi
+uvicorn==0.34.0
+passlib==1.7.4
+SQLAlchemy==1.4.47
+bcrypt==4.0.1
+python-multipart==0.0.5
+pydantic==2.10.6
+PyJWT>=2.0.0
+boto3>=1.15.3
+rapidfuzz
+requests
+selenium
+stripe
+cryptography
+python-dotenv
+pymysql

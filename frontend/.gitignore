@@ -1,0 +1,36 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# production
+/build
+
+# misc
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+npm-debug.log*
+yarn-debug.log*backend-1   | INFO:     Started server process [8]
+backend-1   | INFO:     Waiting for application startup.
+backend-1   | INFO:     Application startup complete.
+backend-1   | INFO:     172.18.0.1:41616 - "POST /token HTTP/1.1" 200 OK
+backend-1   | INFO:     172.18.0.1:41616 - "OPTIONS /products/ HTTP/1.1" 200 OK
+backend-1   | INFO:     172.18.0.1:41616 - "GET /products/ HTTP/1.1" 200 OK
+backend-1   | INFO:     172.18.0.1:43406 - "OPTIONS /upload-url?filename=Noraver.png HTTP/1.1" 200 OK
+backend-1   | 
+backend-1   | 🚨 ERROR EN /upload-url 🚨
+backend-1   | Unable to locate credentials
+backend-1   | 
+backend-1   | INFO:     172.18.0.1:43406 - "GET /upload-url?filename=Noraver.png HTTP/1.1" 500 Internal Server Error
+
+
+yarn-error.log*
