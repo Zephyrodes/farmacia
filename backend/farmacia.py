@@ -29,7 +29,7 @@ from rapidfuzz import fuzz
 from cryptography.fernet import Fernet, InvalidToken
 import secrets
 from math import radians, sin, cos, sqrt, atan2
-from random import sample
+import random
 
 load_dotenv()
 
@@ -1551,14 +1551,17 @@ async def get_my_gamification(current_user: UserDB = Depends(get_current_user), 
     }
 
 MISSIONS_POOL = [
-    {"code": "all_types", "name": "Explorador semanal", "description": "Compra al menos un producto de cada categoría distinta.", "points_reward": 20},
-    {"code": "multi_qty", "name": "Multi-compra", "description": "Compra al menos 3 unidades de un mismo producto en una sola orden.", "points_reward": 10},
-    {"code": "early_bird", "name": "Compra rápida", "description": "Compra antes de las 9am o después de las 9pm.", "points_reward": 10},
-    {"code": "vitamin_fan", "name": "Fan de la vitamina", "description": "Compra un producto de 'Vitaminas y suplementos'.", "points_reward": 15},
-    {"code": "loyal_client", "name": "Cliente fiel", "description": "Realiza 2 compras diferentes en la semana.", "points_reward": 20},
-    {"code": "promo_hunter", "name": "Cazador de ofertas", "description": "Compra un producto con promoción activa.", "points_reward": 10},
-    {"code": "family_order", "name": "Compra familiar", "description": "Agrega al menos 5 productos diferentes en una sola orden.", "points_reward": 20},
+    {"code": "all_types",    "name": "Explorador semanal",    "description": "Compra al menos un producto de cada categoría distinta.",        "points_reward": 20},
+    {"code": "multi_qty",    "name": "Multi-compra",         "description": "Compra al menos 3 unidades de un mismo producto en una sola orden.",  "points_reward": 10},
+    {"code": "early_bird",   "name": "Compra rápida",        "description": "Compra antes de las 9 am o después de las 9 pm.",                      "points_reward": 10},
+    {"code": "vitamin_fan",  "name": "Fan de la vitamina",   "description": "Compra un producto de 'Vitaminas y suplementos'.",                     "points_reward": 15},
+    {"code": "loyal_client", "name": "Cliente fiel",         "description": "Realiza 2 compras diferentes en la semana.",                            "points_reward": 20},
+    {"code": "promo_hunter", "name": "Cazador de ofertas",   "description": "Compra un producto con promoción activa.",                               "points_reward": 10},
+    {"code": "family_order", "name": "Compra familiar",      "description": "Agrega al menos 5 productos diferentes en una sola orden.",              "points_reward": 20},
+    {"code": "first_order",  "name": "Primera compra",       "description": "Realiza tu primer pedido de la semana.",                                 "points_reward": 5},
+    {"code": "big_spender",  "name": "Gran comprador",       "description": "Gasta más de $100.000 COP en un pedido.",                                "points_reward": 15},
 ]
+
 
 @app.get("/missions/active")
 def get_active_missions(db: Session = Depends(get_db)):
@@ -1593,156 +1596,133 @@ def get_my_missions(current_user: UserDB = Depends(get_current_user), db: Sessio
 
 def check_and_complete_missions(db, user_id, order):
     now = datetime.utcnow()
-    # Asegurarse de que misiones semanales estén inicializadas
     initialize_weekly_missions(db)
 
     missions = db.query(MissionDB).filter(
         MissionDB.active == True,
         MissionDB.week_start <= now,
-        MissionDB.week_end >= now
+        MissionDB.week_end   >= now
     ).all()
 
     for mission in missions:
-        user_mission = db.query(UserMissionDB).filter_by(user_id=user_id, mission_id=mission.id).first()
-        if user_mission and user_mission.completed:
+        user_m = db.query(UserMissionDB).filter_by(user_id=user_id, mission_id=mission.id).first()
+        if user_m and user_m.completed:
             continue
 
-        # Validaciones básicas según código
+        # MULTI_QTY
         if mission.code == "multi_qty":
             if any(item.quantity >= 3 for item in order.items):
-                if not user_mission:
-                    user_mission = UserMissionDB(user_id=user_id, mission_id=mission.id, completed=True, completed_at=now)
-                    db.add(user_mission)
-                else:
-                    user_mission.completed = True
-                    user_mission.completed_at = now
-                gam = db.query(UserGamificationDB).filter_by(user_id=user_id).first()
-                gam.points += mission.points_reward
-                db.commit()
+                completed = True
 
+        # EARLY_BIRD
         elif mission.code == "early_bird":
-            order_hour = order.created_at.hour
-            if order_hour < 9 or order_hour >= 21:
-                if not user_mission:
-                    user_mission = UserMissionDB(user_id=user_id, mission_id=mission.id, completed=True, completed_at=now)
-                    db.add(user_mission)
-                else:
-                    user_mission.completed = True
-                    user_mission.completed_at = now
-                gam = db.query(UserGamificationDB).filter_by(user_id=user_id).first()
-                gam.points += mission.points_reward
-                db.commit()
+            h = order.created_at.hour
+            if h < 9 or h >= 21:
+                completed = True
 
+        # FAMILY_ORDER
         elif mission.code == "family_order":
-            product_types = set(item.product.category_id for item in order.items if item.product and item.product.category_id)
-            if len(product_types) >= 5:
-                if not user_mission:
-                    user_mission = UserMissionDB(user_id=user_id, mission_id=mission.id, completed=True, completed_at=now)
-                    db.add(user_mission)
-                else:
-                    user_mission.completed = True
-                    user_mission.completed_at = now
-                gam = db.query(UserGamificationDB).filter_by(user_id=user_id).first()
-                gam.points += mission.points_reward
-                db.commit()
+            types = {item.product.category_id for item in order.items if item.product}
+            if len(types) >= 5:
+                completed = True
 
+        # VITAMIN_FAN
         elif mission.code == "vitamin_fan":
-            vit_cat = db.query(CategoryDB).filter(CategoryDB.name.ilike("%vitaminas%")).first()
-            if vit_cat and any(item.product.category_id == vit_cat.id for item in order.items):
-                if not user_mission:
-                    user_mission = UserMissionDB(user_id=user_id, mission_id=mission.id, completed=True, completed_at=now)
-                    db.add(user_mission)
-                else:
-                    user_mission.completed = True
-                    user_mission.completed_at = now
-                gam = db.query(UserGamificationDB).filter_by(user_id=user_id).first()
-                gam.points += mission.points_reward
-                db.commit()
+            vit = db.query(CategoryDB).filter(CategoryDB.name.ilike("%vitaminas%")).first()
+            if vit and any(item.product.category_id == vit.id for item in order.items):
+                completed = True
 
+        # PROMO_HUNTER
         elif mission.code == "promo_hunter":
-            promo_found = False
-            for item in order.items:
-                now = datetime.utcnow()
-                promo = db.query(PromotionDB).filter(
-                    PromotionDB.active == True,
-                    PromotionDB.start_date <= now,
-                    PromotionDB.end_date >= now,
-                    ((PromotionDB.product_id == item.product_id) |
-                     (PromotionDB.category_id == item.product.category_id))
-                ).first()
-                if promo:
-                    promo_found = True
-                    break
-            if promo_found:
-                if not user_mission:
-                    user_mission = UserMissionDB(user_id=user_id, mission_id=mission.id, completed=True, completed_at=now)
-                    db.add(user_mission)
-                else:
-                    user_mission.completed = True
-                    user_mission.completed_at = now
-                gam = db.query(UserGamificationDB).filter_by(user_id=user_id).first()
-                gam.points += mission.points_reward
-                db.commit()
+            if any(
+                db.query(PromotionDB)
+                  .filter(
+                      PromotionDB.active==True,
+                      PromotionDB.start_date<=now,
+                      PromotionDB.end_date>=now,
+                      ((PromotionDB.product_id==item.product_id)|
+                       (PromotionDB.category_id==item.product.category_id))
+                  ).first()
+                for item in order.items
+            ):
+                completed = True
 
+        # ALL_TYPES
         elif mission.code == "all_types":
-            categories_in_order = {item.product.category_id for item in order.items if item.product}
-            all_categories = db.query(CategoryDB.id).all()
-            all_category_ids = set(c[0] for c in all_categories)
-            if all_category_ids.issubset(categories_in_order):
-                if not user_mission:
-                    user_mission = UserMissionDB(user_id=user_id, mission_id=mission.id, completed=True, completed_at=now)
-                    db.add(user_mission)
-                else:
-                    user_mission.completed = True
-                    user_mission.completed_at = now
-                gam = db.query(UserGamificationDB).filter_by(user_id=user_id).first()
-                gam.points += mission.points_reward
-                db.commit()
+            cats_in = {item.product.category_id for item in order.items if item.product}
+            all_cats = {c[0] for c in db.query(CategoryDB.id).all()}
+            if all_cats.issubset(cats_in):
+                completed = True
 
+        # LOYAL_CLIENT
         elif mission.code == "loyal_client":
-            week_start = now - timedelta(days=now.weekday())
-            week_end = week_start + timedelta(days=6, hours=23, minutes=59)
-            orders_this_week = db.query(OrderDB).filter(
-                OrderDB.client_id == user_id,
-                OrderDB.created_at >= week_start,
-                OrderDB.created_at <= week_end
+            monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+            sunday = monday + timedelta(days=6, hours=23, minutes=59, seconds=59)
+            cnt = db.query(OrderDB).filter(
+                OrderDB.client_id==user_id,
+                OrderDB.created_at>=monday,
+                OrderDB.created_at<=sunday
             ).count()
-            if orders_this_week >= 2:
-                if not user_mission:
-                    user_mission = UserMissionDB(user_id=user_id, mission_id=mission.id, completed=True, completed_at=now)
-                    db.add(user_mission)
-                else:
-                    user_mission.completed = True
-                    user_mission.completed_at = now
-                gam = db.query(UserGamificationDB).filter_by(user_id=user_id).first()
-                gam.points += mission.points_reward
-                db.commit()
+            if cnt >= 2:
+                completed = True
 
+        # FIRST_ORDER
+        elif mission.code == "first_order":
+            # Si nunca tuvo esta misión completada, la marcamos en la primera orden
+            if not user_m:
+                completed = True
 
+        # BIG_SPENDER
+        elif mission.code == "big_spender":
+            # Total calculado ya en create_order
+            if order.total >= 100_000:
+                completed = True
+
+        else:
+            completed = False
+
+        # Si correspondió completarla, la guardamos y damos puntos
+        if locals().get("completed"):
+            if not user_m:
+                user_m = UserMissionDB(
+                    user_id     = user_id,
+                    mission_id  = mission.id,
+                    completed   = True,
+                    completed_at= now
+                )
+                db.add(user_m)
+            else:
+                user_m.completed    = True
+                user_m.completed_at = now
+
+            gam = db.query(UserGamificationDB).filter_by(user_id=user_id).first()
+            gam.points += mission.points_reward
+            db.commit()
+        # limpiar flag
+        if "completed" in locals(): del completed
+        
+WEEKLY_MISSION_COUNT = 3
 def initialize_weekly_missions(db: Session):
-    now = datetime.utcnow()
-    week_start = now - timedelta(days=now.weekday())  # Lunes
-    week_end = week_start + timedelta(days=6, hours=23, minutes=59)
+    # 1. Semana normalizada: lunes 00:00 -> domingo 23:59:59
+    now    = datetime.utcnow()
+    monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = monday
+    week_end   = monday + timedelta(days=6, hours=23, minutes=59, seconds=59)
 
-    existing = db.query(MissionDB).filter(
-        MissionDB.week_start == week_start,
-        MissionDB.active == True
-    ).all()
-    if existing:
-        return  # Ya inicializadas
+    # 2. Si ya hay cualquier misión esta semana, no hacemos nada
+    if db.query(MissionDB).filter(MissionDB.week_start == week_start).count() > 0:
+        return
 
-    available = [m for m in MISSIONS_POOL]
-    selected = sample(available, min(3, len(available)))
-
-    for m in selected:
+    # 3. Escogemos 3 al azar de nuestro pool completo
+    for m in random.sample(MISSIONS_POOL, WEEKLY_MISSION_COUNT):
         db.add(MissionDB(
-            code=m["code"],
-            name=m["name"],
-            description=m["description"],
-            points_reward=m["points_reward"],
-            active=True,
-            week_start=week_start,
-            week_end=week_end
+            code          = m["code"],
+            name          = m["name"],
+            description   = m["description"],
+            points_reward = m["points_reward"],
+            active        = True,
+            week_start    = week_start,
+            week_end      = week_end
         ))
     db.commit()
 

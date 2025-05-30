@@ -1,4 +1,4 @@
-// src/client/pages/CatalogDetail.jsx
+// CatalogDetail.jsx
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../../common/services/api'
@@ -8,9 +8,10 @@ import { useAuth } from '../../common/context/AuthContext'
 export default function CatalogDetail() {
   const { id } = useParams()
   const [product, setProduct] = useState(null)
+  const [imageUrl, setImageUrl] = useState('')
   const [quantity, setQuantity] = useState(1)
   const { addToCart } = useCart()
-  const { user } = useAuth()
+  const { user, token } = useAuth()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -18,12 +19,26 @@ export default function CatalogDetail() {
       try {
         const { data } = await api.get(`/products/${id}`)
         setProduct(data)
+
+        if (data.image_filename && token) {
+          try {
+            const imgRes = await api.get(`/imagen/${data.image_filename}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            })
+            setImageUrl(imgRes.data.image_url)
+          } catch (err) {
+            console.error('Error fetching image URL:', err)
+            setImageUrl('')
+          }
+        } else {
+          setImageUrl('')
+        }
       } catch (err) {
         console.error('Error fetching product:', err)
       }
     }
     fetchProduct()
-  }, [id])
+  }, [id, token])
 
   if (!product) {
     return (
@@ -51,11 +66,17 @@ export default function CatalogDetail() {
       </button>
 
       <div className="flex flex-col md:flex-row gap-8 bg-white rounded-lg shadow p-6">
-        <img
-          src={product.image}
-          alt={product.name}
-          className="w-full md:w-1/2 h-80 object-contain"
-        />
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={product.name}
+            className="w-full md:w-1/2 h-80 object-contain"
+          />
+        ) : (
+          <div className="w-full md:w-1/2 h-80 flex items-center justify-center bg-gray-100 text-gray-400">
+            Sin imagen
+          </div>
+        )}
 
         <div className="flex-1 flex flex-col">
           <h1 className="text-3xl font-bold mb-4 text-gray-800">

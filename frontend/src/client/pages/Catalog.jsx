@@ -1,6 +1,5 @@
-// src/client/pages/Catalog.jsx
 import React, { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import api from '../../common/services/api'
 import { useCart } from '../../common/context/CartContext'
 import { useAuth } from '../../common/context/AuthContext'
@@ -9,21 +8,63 @@ export default function Catalog() {
   const [products, setProducts] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const { addToCart } = useCart()
-  const { user } = useAuth()
+  const { user, token } = useAuth()
   const navigate = useNavigate()
 
-  // Fetch productos al montar
   useEffect(() => {
-    async function fetchProducts() {
+    // Si no hay token, solo cargar productos sin imagen
+    async function fetchProductsWithoutImages() {
       try {
         const { data } = await api.get('/products/')
-        setProducts(data)
+        // Asignar placeholder en imageUrl
+        const prods = data.map(p => ({
+          ...p,
+          imageUrl: 'https://via.placeholder.com/150?text=Inicia+sesión+para+ver+imagen'
+        }))
+        setProducts(prods)
       } catch (err) {
         console.error('Error fetching products:', err)
       }
     }
-    fetchProducts()
-  }, [])
+
+    async function fetchProductsWithImages() {
+      try {
+        // Mejor enviar token para evitar inconsistencias (aunque backend lo acepte sin token)
+        const { data } = await api.get('/products/', {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+
+        const productsWithImages = await Promise.all(
+          data.map(async product => {
+            if (product.image_filename) {
+              try {
+                const res = await api.get(`/imagen/${product.image_filename}`, {
+                  headers: { Authorization: `Bearer ${token}` },
+                })
+                return { ...product, imageUrl: res.data.image_url }
+              } catch (err) {
+                console.error('Error fetching image URL for product', product.id, err)
+                return { ...product, imageUrl: 'https://via.placeholder.com/150?text=Error+imagen' }
+              }
+            } else {
+              return { ...product, imageUrl: 'https://via.placeholder.com/150?text=Sin+imagen' }
+            }
+          })
+        )
+        setProducts(productsWithImages)
+      } catch (err) {
+        console.error('Error fetching products:', err)
+      }
+    }
+
+    if (!token) {
+      // No token: no mostrar imágenes reales
+      fetchProductsWithoutImages()
+    } else {
+      // Token listo: cargar productos con imágenes reales
+      fetchProductsWithImages()
+    }
+  }, [token])
 
   const filtered = products.filter(p =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -56,11 +97,17 @@ export default function Catalog() {
             key={product.id}
             className="bg-white rounded-lg shadow hover:shadow-md transition p-4 flex flex-col"
           >
-            <img
-              src={product.image}
-              alt={product.name}
-              className="h-40 object-contain mb-4"
-            />
+            {product.imageUrl ? (
+              <img
+                src={product.imageUrl}
+                alt={product.name}
+                className="h-40 object-contain mb-4"
+              />
+            ) : (
+              <div className="h-40 flex items-center justify-center bg-gray-100 mb-4 text-gray-400">
+                Sin imagen
+              </div>
+            )}
             <h2 className="font-semibold text-lg text-gray-800 mb-2">
               {product.name}
             </h2>
@@ -68,12 +115,6 @@ export default function Catalog() {
               ${product.price.toFixed(2)}
             </p>
             <div className="mt-auto flex gap-2">
-              <Link
-                to={`/catalogo/${product.id}`}
-                className="flex-1 text-center bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded-lg font-medium transition"
-              >
-                Ver detalle
-              </Link>
               <button
                 onClick={() => handleAdd(product)}
                 className="bg-yellow-400 hover:bg-yellow-500 text-black px-3 py-2 rounded-lg font-medium transition"
@@ -85,5 +126,5 @@ export default function Catalog() {
         ))}
       </div>
     </div>
-)
+  )
 }
