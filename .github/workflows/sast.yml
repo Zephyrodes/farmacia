@@ -25,7 +25,7 @@ jobs:
         run: semgrep scan --config "p/owasp-top-ten" -o semgrep_resultados.txt --output-format=text
 
       - name: Subir artefactos
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: resultados-sast
           path: |
