@@ -18,11 +18,19 @@ jobs:
         run: |
           pip install bandit semgrep
 
-      - name: Ejecutar Bandit y guardar resultados
-        run: bandit -r farmacia.py -f txt -o bandit_resultados.txt
+      - name: Ejecutar Bandit (backend)
+        run: bandit -r backend/ -f txt -o bandit_resultados.txt
 
-      - name: Ejecutar Semgrep y guardar resultados
-        run: semgrep scan --config "p/owasp-top-ten" -o semgrep_resultados.txt
+      - name: Ejecutar Semgrep (backend y frontend)
+        run: |
+          semgrep scan \
+            --config "p/owasp-top-ten" \
+            --include 'backend/**/*.py' \
+            --include 'frontend/**/*.[jt]s' \
+            --include 'frontend/**/*.[jt]sx' \
+            --include 'frontend/Dockerfile' \
+            --include 'backend/Dockerfile' \
+            -o semgrep_resultados.txt
 
       - name: Subir artefactos
         uses: actions/upload-artifact@v4
