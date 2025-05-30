@@ -31,6 +31,7 @@ jobs:
             --include 'frontend/**/*.[jt]sx' \
             --include 'frontend/Dockerfile' \
             --include 'backend/Dockerfile' \
+            --verbose \
             -o semgrep_resultados.txt
 
       - name: Subir artefactos
