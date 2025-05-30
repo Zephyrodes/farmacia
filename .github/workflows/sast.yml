@@ -22,7 +22,7 @@ jobs:
         run: bandit -r farmacia.py -f txt -o bandit_resultados.txt
 
       - name: Ejecutar Semgrep y guardar resultados
-        run: semgrep scan --config "p/owasp-top-ten" -o semgrep_resultados.txt --output-format=text
+        run: semgrep scan --config "p/owasp-top-ten" -o semgrep_resultados.txt
 
       - name: Subir artefactos
         uses: actions/upload-artifact@v4
