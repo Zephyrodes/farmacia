@@ -23,3 +23,17 @@ jobs:
 
       - name: Ejecutar Semgrep
         run: semgrep scan --config "p/owasp-top-ten" > semgrep_resultados.txt
+
+      - name: Guardar resultados Bandit
+        run: bandit -r farmacia.py -f txt -o bandit_resultados.txt
+
+      - name: Guardar resultados Semgrep
+        run: semgrep scan --config "p/owasp-top-ten" -o semgrep_resultados.txt --output-format=text
+
+      - name: Subir artefactos
+        uses: actions/upload-artifact@v3
+        with:
+          name: resultados-sast
+          path: |
+            bandit_resultados.txt
+            semgrep_resultados.txt
