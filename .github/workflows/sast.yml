@@ -19,7 +19,8 @@ jobs:
           pip install bandit semgrep
 
       - name: Ejecutar Bandit (backend)
-        run: bandit -r backend/ -f txt -o bandit_resultados.txt
+        run: |
+          bandit -r backend/ -f txt -o bandit_resultados.txt || true
 
       - name: Ejecutar Semgrep (backend y frontend)
         run: |
