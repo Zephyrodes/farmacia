@@ -1,0 +1,25 @@
+name: Seguridad SAST con Bandit y Semgrep
+
+on: [push, pull_request]
+
+jobs:
+  seguridad:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clonar repo
+        uses: actions/checkout@v3
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Instalar dependencias SAST
+        run: |
+          pip install bandit semgrep
+
+      - name: Ejecutar Bandit
+        run: bandit -r farmacia.py -f txt -o bandit_resultados.txt
+
+      - name: Ejecutar Semgrep
+        run: semgrep scan --config "p/owasp-top-ten" > semgrep_resultados.txt
