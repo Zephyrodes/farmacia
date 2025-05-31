@@ -1,6 +1,6 @@
 # .github/workflows/sast.yml
 
-name: Seguridad SAST con Bandit y Semgrep
+name: Seguridad SAST + Despliegue Seguro (Docker Compose)
 
 on:
   push:
@@ -50,17 +50,23 @@ jobs:
             semgrep_resultados.txt
 
   docker-compose-test:
-    name: Levantar Docker Compose + Smoke Test (sin exponer puertos)
+    name: Levantar Docker Compose + Smoke Test
     runs-on: ubuntu-latest
     needs: seguridad
 
+    # ——————————————————————————————————————————————————————————————————————
+    # Inyectamos todos los secretos que tu docker-compose requiere
+    # ——————————————————————————————————————————————————————————————————————
     env:
-      # Aunque sean valores “dummy”, debemos inyectar algo para que no falle docker-compose
-      AWS_ACCESS_KEY_ID:      ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY:  ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_SESSION_TOKEN:      ${{ secrets.AWS_SESSION_TOKEN }}
-      STRIPE_SECRET_KEY:      ${{ secrets.STRIPE_SECRET_KEY }}
-      STRIPE_WEBHOOK_SECRET:  ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+      # URL de la base de datos (ej.: mysql://user:pass@host:port/db)
+      DATABASE_URL:         ${{ secrets.DATABASE_URL }}
+      # Credenciales AWS (aunque sean dummy, para que no falle Docker Compose)
+      AWS_ACCESS_KEY_ID:    ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN:    ${{ secrets.AWS_SESSION_TOKEN }}
+      # Claves Stripe (pueden ser de prueba)
+      STRIPE_SECRET_KEY:    ${{ secrets.STRIPE_SECRET_KEY }}
+      STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
 
     steps:
       - name: Clonar el repositorio
@@ -71,45 +77,50 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y docker-compose
 
+      - name: Crear .env para CI (variables dummy / secrets)
+        run: |
+          # NOTA: esto crea .env en el directorio raíz del repositorio (donde está docker-compose.yml)
+          echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}"      >> .env
+          echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> .env
+          echo "AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}"      >> .env
+          echo "STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}"      >> .env
+          echo "STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}" >> .env
+          # Si necesitas más variables (SMTP, URLs, etc.), añádelas aquí:
+          # echo "OTRA_VAR=${{ secrets.OTRA_VAR }}" >> .env
+
       - name: Levantar contenedores con Docker Compose
         run: |
-          # Primero bajamos contenedores huérfanos (si los hubiera)
+          # Primero bajamos contenedores huérfanos (si hubiera alguno) — ignoramos errores
           docker-compose -f docker-compose.yml down --remove-orphans || true
-          # Luego arrancamos en modo detached (sin exponer puertos)
+
+          # Ahora levantamos en segundo plano, usando el .env que acabamos de generar
           docker-compose -f docker-compose.yml up -d --build
 
       - name: Esperar a que los servicios estén listos
         run: |
-          # Ajusta este sleep según tu entorno; por ejemplo, 30 s si la DB tarda en inicializar
+          # Ajusta este sleep según el arranque de tu BD/backend (p. ej.: 30 segundos)
           sleep 30
 
-      - name: Verificar contenedores activos (para debug)
-        run: docker ps -a
-
-      #######################################################################
-      # Ahora ejecutamos los “smoke tests” DENTRO del contenedor “backend”  #
-      # Usamos `docker-compose exec backend` para invocar curl sobre 8000   #
-      #######################################################################
-
-      - name: Smoke test → /docs (dentro de contenedor)
+      - name: Verificar contenedores activos (opcional, para debug)
         run: |
-          # Nota: asumimos que Uvicorn corre en el contenedor "backend" en el puerto 8000 sin exponerlo.
-          # Usamos docker-compose exec para lanzar curl dentro del container.
+          docker ps -a
+
+      - name: Smoke test → /docs (dentro del contenedor)
+        run: |
+          # Hacemos un curl desde dentro del contenedor “backend”
           docker-compose exec backend \
             sh -c "curl -o /dev/null -s -w \"%{http_code}\" http://127.0.0.1:8000/docs" \
             > respuesta_docs.txt
           DOC_CODE=$(cat respuesta_docs.txt)
-          echo "→ Código HTTP /docs desde dentro del contenedor: $DOC_CODE"
+          echo "→ Código HTTP /docs dentro del contenedor: $DOC_CODE"
           if [ "$DOC_CODE" != "200" ]; then
             echo "Error: /docs devolvió $DOC_CODE (dentro del contenedor)."
-            # Imprimimos logs del contenedor backend para depuración
             docker-compose logs backend || true
             exit 1
           fi
 
-      - name: Smoke test → /openapi.json (dentro de contenedor)
+      - name: Smoke test → /openapi.json (dentro del contenedor)
         run: |
-          # Verificamos también que la especificación OpenAPI esté accesible.
           docker-compose exec backend \
             sh -c "curl -o /dev/null -s -w \"%{http_code}\" http://127.0.0.1:8000/openapi.json" \
             > respuesta_openapi.txt
@@ -121,7 +132,7 @@ jobs:
             exit 1
           fi
 
-      - name: (Opcional) Logs finales del backend
+      - name: (Opcional) Mostrar logs del backend en caso de fallo
         if: failure()
         run: |
           echo "===== LOGS DEL CONTENEDOR BACKEND ====="
@@ -131,3 +142,4 @@ jobs:
         if: always()
         run: |
           docker-compose -f docker-compose.yml down --remove-orphans
+
