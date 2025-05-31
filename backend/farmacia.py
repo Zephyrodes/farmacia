@@ -506,6 +506,11 @@ LAMBDA_URL_USERNAME = "https://fnoo5iqzzf.execute-api.us-east-1.amazonaws.com/pr
 
 MAX_PAYLOAD_SIZE = 1 * 1024 * 1024  # Límite de 1MB
 
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
+
 @app.post("/register", dependencies=[Depends(verify_role(["admin"]))])
 async def register(user: UserCreate, db: Session = Depends(get_db)):
     """Registrar un nuevo usuario (solo admin)."""
