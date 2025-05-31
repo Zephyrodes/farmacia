@@ -28,6 +28,5 @@ jobs:
           pip install safety
           pip install -r backend/requirements.txt
 
-      - name: Run Safety check
-        run: safety check -r backend/requirements.txt
-
+      - name: Run Safety scan
+        run: safety scan --file=backend/requirements.txt
