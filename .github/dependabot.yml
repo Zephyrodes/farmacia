@@ -3,5 +3,9 @@ updates:
   - package-ecosystem: "pip"
     directory: "/backend"
     schedule:
-      interval: "daily"  # Revisa diariamente
-    open-pull-requests-limit: 5
+      interval: "daily"
+    # Agrupa hasta 5 dependencias que se actualicen al mismo tiempo
+    grouping:
+      enabled: true
+      # Opcional: limitar a 5 paquetes por PR
+      max_updates: 5
