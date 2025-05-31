@@ -56,12 +56,20 @@ jobs:
     runs-on: ubuntu-latest
     needs: seguridad
 
+    # ---------------------------------------------------------------
+    # Aquí inyectamos todos los secretos que tu docker-compose requiere
+    # ---------------------------------------------------------------
     env:
-      # Dummy / Secrets para que Docker Compose no falle al buscar .env
-      DATABASE_URL:        ${{ secrets.DATABASE_URL }}
+      # Este DATABASE_URL “dummy” fuerza al backend a usar SQLite en CI
+      # (evita que el contenedor de backend intente conectarse a MySQL y se reinicie).
+      DATABASE_URL:        "sqlite:///./test.db"
+
+      # Credenciales AWS (aunque sean “dummy” para que no falle Docker Compose)
       AWS_ACCESS_KEY_ID:   ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_SESSION_TOKEN:   ${{ secrets.AWS_SESSION_TOKEN }}
+
+      # Claves Stripe (pueden ser de prueba)
       STRIPE_SECRET_KEY:   ${{ secrets.STRIPE_SECRET_KEY }}
       STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
 
@@ -74,53 +82,58 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y docker-compose
 
-      - name: Crear .env para CI (variables dummy/Secrets)
+      - name: Crear .env para CI (variables “dummy”/Secrets)
         run: |
-          # Generar un .env temporal en la raíz del repo
+          # Enciérralo entre comillas si contiene caracteres especiales
           echo "DATABASE_URL=${DATABASE_URL}"                >  .env
           echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}"      >> .env
           echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> .env
           echo "AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}"      >> .env
           echo "STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}"      >> .env
           echo "STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}" >> .env
+          # Si necesitas más variables (p. ej. SMTP, URLs, etc.), repítelo aquí:
+          # echo "OTRA_VAR=${{ secrets.OTRA_VAR }}" >> .env
 
       - name: Levantar contenedores con Docker Compose
         run: |
-          # Bajar posibles contenedores huérfanos antes de levantar
+          # Borramos contenedores huérfanos (si existieran), sin fallar el job
           docker-compose -f docker-compose.yml down --remove-orphans || true
-          # Construir y arrancar en segundo plano
+          # Ahora levantamos en segundo plano, usando el .env que acabamos de generar
           docker-compose -f docker-compose.yml up -d --build
 
       - name: Esperar a que los servicios estén listos
         run: |
+          # Ajusta este sleep según cuanto tarde DB/backend en arrancar
           sleep 30
 
-      - name: Verificar contenedores activos (opcional, para depuración)
+      - name: Verificar contenedores activos (opcional, para debug)
         run: docker ps -a
 
-      - name: Smoke test → /docs (dentro del contenedor)
+      - name: Smoke test → /docs (dentro del contenedor backend)
         run: |
-          # Usamos -T para evitar errores de TTY
+          # -T para evitar errores de TTY
           docker-compose exec -T backend \
             sh -c "curl -o /dev/null -s -w \"%{http_code}\" http://127.0.0.1:8000/docs" \
-            > respuesta_docs.txt
-          DOC_CODE=$(cat respuesta_docs.txt)
-          echo "→ Código HTTP /docs dentro del contenedor: $DOC_CODE"
+            > respuesta_docs.txt || true
+          DOC_CODE=$(cat respuesta_docs.txt || echo "")
+          echo "→ Código HTTP /docs desde dentro del contenedor: $DOC_CODE"
           if [ "$DOC_CODE" != "200" ]; then
             echo "Error: /docs devolvió $DOC_CODE (dentro del contenedor)."
+            echo "=== Logs del contenedor backend ==="
             docker-compose logs backend || true
             exit 1
           fi
 
-      - name: Smoke test → /openapi.json (dentro del contenedor)
+      - name: Smoke test → /openapi.json (dentro del contenedor backend)
         run: |
           docker-compose exec -T backend \
             sh -c "curl -o /dev/null -s -w \"%{http_code}\" http://127.0.0.1:8000/openapi.json" \
-            > respuesta_openapi.txt
-          OAPI_CODE=$(cat respuesta_openapi.txt)
+            > respuesta_openapi.txt || true
+          OAPI_CODE=$(cat respuesta_openapi.txt || echo "")
           echo "→ Código HTTP /openapi.json dentro del contenedor: $OAPI_CODE"
           if [ "$OAPI_CODE" != "200" ]; then
             echo "Error: /openapi.json devolvió $OAPI_CODE (dentro del contenedor)."
+            echo "=== Logs del contenedor backend ==="
             docker-compose logs backend || true
             exit 1
           fi
@@ -135,4 +148,3 @@ jobs:
         if: always()
         run: |
           docker-compose -f docker-compose.yml down --remove-orphans
-
