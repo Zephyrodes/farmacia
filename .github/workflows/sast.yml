@@ -2,10 +2,15 @@
 
 name: Seguridad SAST con Bandit y Semgrep
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   seguridad:
+    name: Ejecutar SAST (Bandit + Semgrep)
     runs-on: ubuntu-latest
     steps:
       - name: Clonar repo
@@ -45,47 +50,21 @@ jobs:
             semgrep_resultados.txt
 
   docker-compose-test:
-    name: Levantar Docker Compose + Smoke Test
+    name: Levantar Docker Compose + Smoke Test (sin exponer puertos)
     runs-on: ubuntu-latest
     needs: seguridad
 
-    # ——————————————————————————————————————————————————————————————————————
-    # Inyectamos los secretos necesarios para generar el archivo .env
-    # ——————————————————————————————————————————————————————————————————————
     env:
+      # Aunque sean valores “dummy”, debemos inyectar algo para que no falle docker-compose
       AWS_ACCESS_KEY_ID:      ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY:  ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_SESSION_TOKEN:      ${{ secrets.AWS_SESSION_TOKEN }}
       STRIPE_SECRET_KEY:      ${{ secrets.STRIPE_SECRET_KEY }}
       STRIPE_WEBHOOK_SECRET:  ${{ secrets.STRIPE_WEBHOOK_SECRET }}
-    # ——————————————————————————————————————————————————————————————————————
 
     steps:
       - name: Clonar el repositorio
         uses: actions/checkout@v3
-
-      - name: Crear archivo .env para Docker Compose
-        run: |
-          cat <<EOF > .env
-          # Variables de BD
-          DB_USER=${{ secrets.DB_USER }}
-          DB_PASS=${{ secrets.DB_PASS }}
-          DB_NAME=${{ secrets.DB_NAME }}
-          DB_ROOT_PASSWORD=${{ secrets.DB_ROOT_PASSWORD }}
-
-          # Secret keys de la aplicación
-          SECRET_KEY=${{ secrets.SECRET_KEY }}
-          FERNET_KEY=${{ secrets.FERNET_KEY }}
-
-          # Credenciales AWS (dummy o reales según configuración)
-          AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-          AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-          AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
-
-          # Claves Stripe (pueden ser de prueba)
-          STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
-          STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
-          EOF
 
       - name: Instalar Docker Compose
         run: |
@@ -94,34 +73,58 @@ jobs:
 
       - name: Levantar contenedores con Docker Compose
         run: |
-          # Forzamos que Docker Compose construya imágenes limpias:
+          # Primero bajamos contenedores huérfanos (si los hubiera)
+          docker-compose -f docker-compose.yml down --remove-orphans || true
+          # Luego arrancamos en modo detached (sin exponer puertos)
           docker-compose -f docker-compose.yml up -d --build
 
       - name: Esperar a que los servicios estén listos
         run: |
-          # Ajusta el sleep si tu base de datos o backend tardan más en arrancar
-          sleep 20
+          # Ajusta este sleep según tu entorno; por ejemplo, 30 s si la DB tarda en inicializar
+          sleep 30
 
-      - name: Smoke test → /health
+      - name: Verificar contenedores activos (para debug)
+        run: docker ps -a
+
+      #######################################################################
+      # Ahora ejecutamos los “smoke tests” DENTRO del contenedor “backend”  #
+      # Usamos `docker-compose exec backend` para invocar curl sobre 8000   #
+      #######################################################################
+
+      - name: Smoke test → /docs (dentro de contenedor)
         run: |
-          HTTP_CODE=$(curl -o /dev/null -s -w "%{http_code}" http://localhost:8000/health)
-          echo "→ Respuesta /health: $HTTP_CODE"
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "Error: /health devolvió $HTTP_CODE en lugar de 200."
+          # Nota: asumimos que Uvicorn corre en el contenedor "backend" en el puerto 8000 sin exponerlo.
+          # Usamos docker-compose exec para lanzar curl dentro del container.
+          docker-compose exec backend \
+            sh -c "curl -o /dev/null -s -w \"%{http_code}\" http://127.0.0.1:8000/docs" \
+            > respuesta_docs.txt
+          DOC_CODE=$(cat respuesta_docs.txt)
+          echo "→ Código HTTP /docs desde dentro del contenedor: $DOC_CODE"
+          if [ "$DOC_CODE" != "200" ]; then
+            echo "Error: /docs devolvió $DOC_CODE (dentro del contenedor)."
+            # Imprimimos logs del contenedor backend para depuración
+            docker-compose logs backend || true
             exit 1
           fi
 
-      - name: Smoke test → /docs
+      - name: Smoke test → /openapi.json (dentro de contenedor)
         run: |
-          HTTP_CODE=$(curl -o /dev/null -s -w "%{http_code}" http://localhost:8000/docs)
-          echo "→ Respuesta /docs: $HTTP_CODE"
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "Error: /docs devolvió $HTTP_CODE en lugar de 200."
+          # Verificamos también que la especificación OpenAPI esté accesible.
+          docker-compose exec backend \
+            sh -c "curl -o /dev/null -s -w \"%{http_code}\" http://127.0.0.1:8000/openapi.json" \
+            > respuesta_openapi.txt
+          OAPI_CODE=$(cat respuesta_openapi.txt)
+          echo "→ Código HTTP /openapi.json dentro del contenedor: $OAPI_CODE"
+          if [ "$OAPI_CODE" != "200" ]; then
+            echo "Error: /openapi.json devolvió $OAPI_CODE (dentro del contenedor)."
+            docker-compose logs backend || true
             exit 1
           fi
 
-      - name: Descargar logs del backend (opcional, para depuración)
+      - name: (Opcional) Logs finales del backend
+        if: failure()
         run: |
+          echo "===== LOGS DEL CONTENEDOR BACKEND ====="
           docker-compose logs backend || true
 
       - name: Bajar contenedores Docker Compose
