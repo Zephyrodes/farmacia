@@ -1251,7 +1251,8 @@ def compare_price_scraping(product_id: int, db: Session = Depends(get_db)):
                 precio_rebaja = first.find_element(By.CSS_SELECTOR, sel).text.strip()
                 logging.debug("Precio extraído con selector `%s`: %s", sel, precio_rebaja)
                 break
-            except Exception:
+            except Exception as e:
+                logging.error(f"Error al extraer precio con selector `{sel}`: {e}")
                 continue
 
         # 3) Fallback XPath: cualquier <span> con '$'
