@@ -1,7 +1,7 @@
 fastapi
 uvicorn==0.34.0
 passlib==1.7.4
-SQLAlchemy==1.4.47
+SQLAlchemy==2.0.41
 bcrypt==4.0.1
 python-multipart==0.0.5
 pydantic==2.10.6
