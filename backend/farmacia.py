@@ -515,7 +515,8 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
         lambda_response = requests.post(
             LAMBDA_URL_USERNAME,  # URL para validar el username
             json={"username": user.username},  # Solo validación del username
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
+            timeout=5
         )
 
         if lambda_response.status_code != 200:
@@ -651,7 +652,8 @@ async def create_product(
     try:
         lambda_response = requests.post(
             LAMBDA_URL_PRODUCTO,
-            json={"precio": product.price, "stock": product.stock}
+            json={"precio": product.price, "stock": product.stock},
+            timeout=5
         )
         if lambda_response.status_code == 400:
             errores = json.loads(lambda_response.json()["body"])["errores"]
@@ -758,7 +760,8 @@ async def update_product(
     try:
         lambda_response = requests.post(
             LAMBDA_URL_PRODUCTO,
-            json={"precio": product.price, "stock": product.stock}
+            json={"precio": product.price, "stock": product.stock},
+            timeout=5
         )
         if lambda_response.status_code == 400:
             errores = json.loads(lambda_response.json()["body"])["errores"]
