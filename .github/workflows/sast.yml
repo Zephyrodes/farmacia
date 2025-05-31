@@ -50,15 +50,12 @@ jobs:
     needs: seguridad
 
     # ——————————————————————————————————————————————————————————————————————
-    # Aquí inyectamos todos los secretos que tu docker-compose requiere
+    # Inyectamos los secretos necesarios para generar el archivo .env
     # ——————————————————————————————————————————————————————————————————————
     env:
-      # Credenciales AWS (aunque sean dummy, para que no falle Docker Compose)
       AWS_ACCESS_KEY_ID:      ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY:  ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_SESSION_TOKEN:      ${{ secrets.AWS_SESSION_TOKEN }}
-
-      # Claves Stripe (pueden ser de prueba)
       STRIPE_SECRET_KEY:      ${{ secrets.STRIPE_SECRET_KEY }}
       STRIPE_WEBHOOK_SECRET:  ${{ secrets.STRIPE_WEBHOOK_SECRET }}
     # ——————————————————————————————————————————————————————————————————————
@@ -66,6 +63,29 @@ jobs:
     steps:
       - name: Clonar el repositorio
         uses: actions/checkout@v3
+
+      - name: Crear archivo .env para Docker Compose
+        run: |
+          cat <<EOF > .env
+          # Variables de BD
+          DB_USER=${{ secrets.DB_USER }}
+          DB_PASS=${{ secrets.DB_PASS }}
+          DB_NAME=${{ secrets.DB_NAME }}
+          DB_ROOT_PASSWORD=${{ secrets.DB_ROOT_PASSWORD }}
+
+          # Secret keys de la aplicación
+          SECRET_KEY=${{ secrets.SECRET_KEY }}
+          FERNET_KEY=${{ secrets.FERNET_KEY }}
+
+          # Credenciales AWS (dummy o reales según configuración)
+          AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+          AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+          AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+
+          # Claves Stripe (pueden ser de prueba)
+          STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+          STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+          EOF
 
       - name: Instalar Docker Compose
         run: |
