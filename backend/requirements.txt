@@ -7,7 +7,7 @@ python-multipart==0.0.18       # Subido para parche ReDoS y DoS
 pydantic==2.10.6
 PyJWT==2.10.1                  # Subido por CVE-2024-53861
 boto3==1.26.0                  # (mantienes 1.26 para compatibilidad con urllib3 2.x)
-rapidfuzz==2.7.0
+rapidfuzz==3.13.0
 requests==2.32.3
 selenium==4.15.1               # Subido para parche CVE-2023-5590
 stripe==5.3.0
