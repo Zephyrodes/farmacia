@@ -1,5 +1,5 @@
 fastapi==0.115.11
-uvicorn==0.34.0
+uvicorn==0.34.3
 passlib==1.7.4
 SQLAlchemy==2.0.10             # Subido a 2.x para parche CVE SQLAlchemy
 bcrypt==4.0.1
